@@ -1,15 +1,84 @@
-from azure.identity import ClientSecretCredential # type: ignore
-from . import api
-import json
 import base64
-from pathlib import Path
-from . import semantic_models
+import json
+import os
 import re
+from pathlib import Path
+from . import api
+from . import config
+from . import authenticate
 
-def import_fabric_item(
+
+def get_items(
     token: str,
-    path: str,
+    workspace_id: str
+):
+    result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items")
+    return result
+
+def get_item_by_id(
+    token: str,
     workspace_id: str,
+    item_id: str
+):
+    result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}")
+    return result
+
+def get_items_by_name(token: str, workspace_id: str, item_name: str):
+    items = get_items(token, workspace_id)
+    result = []
+    for item in items:
+        if item['displayName'] == item_name:
+            result.append(item)
+    return result
+
+def get_item_definition_by_id(token: str, workspace_id: str, item_id: str, output_dir: str = None, format: str | None = None):
+    """
+    Exports a Fabric item from a Fabric workspace, optionnaly to a specified local path.
+
+    Args:
+        workspace_id (str): The Fabric workspace ID.
+        item_id (str): The Fabric item ID (e.g. semantic model).
+        path (str, optional): Output directory. Defaults to './pbipOutput'.
+        format (str, optional): Optional export format (e.g., 'PBIP').
+
+    Returns:
+        dict: Response from the Fabric API request.
+    """
+
+    uri = f"workspaces/{workspace_id}/items/{item_id}/getDefinition"
+
+    if format:
+        uri += f"?format={format}"
+
+    # POST request to the Fabric API
+    response = api.invoke_fabric_api_request(uri=uri, token=token,  method="POST")
+    if output_dir:
+        parts = response.get("definition", {}).get("parts", [])
+        for part in parts:
+            path = part["path"]
+            payload = part["payload"]
+            payload_type = part.get("payloadType")
+
+            # Compute full file path
+            if(output_dir):
+                full_path = os.path.join(output_dir, path)
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+                # Decode Base64 payload (only for InlineBase64 types)
+                if payload_type == "InlineBase64":
+                    content = base64.b64decode(payload)
+                    with open(full_path, "wb") as f:
+                        f.write(content)
+                    print(f"✅ Saved: {full_path}")
+                else:
+                    print(f"⚠️ Skipped {path} (unsupported payloadType: {payload_type})")
+    return response
+
+
+def import_item(
+    token: str,
+    workspace_id: str,
+    path: str,
     item_properties: dict | None = None,
     skip_if_exists: bool = False,
     retain_roles:bool = False
@@ -50,7 +119,7 @@ def import_fabric_item(
     # ----------------------------------------------------------------------
 
     items = api.invoke_fabric_api_request(
-        auth_token=token,
+        token=token,
         uri=f"workspaces/{workspace_id}/items",
         method="GET"
     )
@@ -92,7 +161,7 @@ def import_fabric_item(
     # ----------------------------------------------------------------------
 
     parts = []
-    semantic_model_id = item_properties.get("semanticModelId") if item_properties else None
+    item_id = item_properties.get("semanticModelId") if item_properties else None
 
     for file in all_files:
         relative_path = file.relative_to(path).as_posix()
@@ -102,11 +171,11 @@ def import_fabric_item(
             pbir_json = json.loads(text)
 
             # Resolve semantic model connection
-            if semantic_model_id or (
+            if item_id or (
                 pbir_json.get("datasetReference")
                 and pbir_json["datasetReference"].get("byPath", {}).get("path")
             ):
-                if not semantic_model_id:
+                if not item_id:
                     raise Exception(
                         "Report uses byPath connection. You MUST pass itemProperties.semanticModelId"
                     )
@@ -130,13 +199,13 @@ def import_fabric_item(
                         "connectionString": None,
                         "pbiServiceModelId": None,
                         "pbiModelVirtualServerName": "sobe_wowvirtualserver",
-                        "pbiModelDatabaseName": semantic_model_id,
+                        "pbiModelDatabaseName": item_id,
                         "name": "EntityDataSource",
                         "connectionType": "pbiServiceXmlaStyleLive",
                     }
                 else:
                     by_connection = {
-                        "connectionString": f"semanticmodelid={semantic_model_id}"
+                        "connectionString": f"semanticmodelid={item_id}"
                     }
 
                 pbir_json["datasetReference"]["byConnection"] = by_connection
@@ -172,7 +241,7 @@ def import_fabric_item(
     if retain_roles and existing:
         role_definitions = []
         role_names: list[str] = []
-        published_semantic_model_definition = semantic_models.get_semantic_model_definition_by_id(token, workspace_id, item_id)
+        published_item_definition = get_item_definition_by_id(token, workspace_id, item_id)
 
         # remove roles from original path
         parts[:] = [
@@ -180,7 +249,7 @@ def import_fabric_item(
             if not part["Path"].startswith('definition/roles/')
         ]
 
-        for file in published_semantic_model_definition.get("definition", {}).get("parts", []):
+        for file in published_item_definition.get("definition", {}).get("parts", []):
             if re.match(r"definition/roles/.*\.tmdl", file['path']):
                 role_definitions.append(file)
                 content = base64.b64decode(file['payload']).decode('utf-8')
@@ -195,7 +264,7 @@ def import_fabric_item(
                 })
 
         # edit model.tmdl to keep existing roles
-        for file in published_semantic_model_definition.get("definition", {}).get("parts", []):
+        for file in published_item_definition.get("definition", {}).get("parts", []):
             if file['path'].endswith("definition/model.tmdl"):
                 content = base64.b64decode(file['payload']).decode('utf-8')
                 parts[:] = [
@@ -234,7 +303,7 @@ def import_fabric_item(
         }
 
         result = api.invoke_fabric_api_request(
-            auth_token = token,
+            token = token,
             uri=f"workspaces/{workspace_id}/items",
             method="POST",
             body=json.dumps(payload)
@@ -260,7 +329,7 @@ def import_fabric_item(
         }
 
         api.invoke_fabric_api_request(
-            auth_token = token,
+            token = token,
             uri=f"workspaces/{workspace_id}/items/{item_id}/updateDefinition",
             method="POST",
             body=json.dumps(update_payload)
@@ -271,3 +340,25 @@ def import_fabric_item(
             "displayName": display_name,
             "type": item_type
         }
+
+
+def delete_item_by_id(
+    token: str,
+    workspace_id: str,
+    item_id: str
+):
+    result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}", method="DELETE")
+    return result
+
+
+def main():
+    token = authenticate.get_access_token(tenant_id=config.TENANT_ID, client_id=config.CLIENT_ID, client_secret=config.CLIENT_SECRET)
+
+    config.print_color(get_items(                   token=token, workspace_id=config.WORKSPACE_ID)                                      ,"green")
+    config.print_color(get_item_by_id(              token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
+    config.print_color(get_items_by_name(           token=token, workspace_id=config.WORKSPACE_ID, item_name="test")                    ,"green")
+    config.print_color(get_item_definition_by_id(   token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
+    config.print_color(import_item(         token=token, workspace_id=config.WORKSPACE_ID, path=r"\output", item_properties={"displayName":"test2"}, retain_roles = False),"green")
+    #config.print_color(delete_item_by_id( token=token, workspace_id=config.WORKSPACE_ID, item_id = ""))
+if __name__ == "__main__":
+    main()

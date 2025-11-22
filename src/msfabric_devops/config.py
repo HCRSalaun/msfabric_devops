@@ -10,7 +10,6 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 WORKSPACE_ID = os.getenv("WORKSPACE_ID")
 SEMANTIC_MODEL_ID = os.getenv("SEMANTIC_MODEL_ID")
 
-print(TENANT_ID)
 
 def print_color(text, color="white", bold=False, bg=None):
     """

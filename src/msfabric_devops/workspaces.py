@@ -1,4 +1,3 @@
-from azure.identity import ClientSecretCredential # type: ignore
 from . import config
 from . import authenticate
 from . import api

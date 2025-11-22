@@ -1,6 +1,6 @@
 from .items import *
-from .semantic_models import *
 from .workspaces import *
+from .authenticate import *
 
 
 __all__ = [
@@ -9,6 +9,12 @@ __all__ = [
 
     # items
     'import_fabric_item',
+    'get_items',
+    'get_item_by_id',
+    'get_items_by_name',
+    'get_item_definition_by_id',
+    'import_item',
+    'delete_item_by_id'
 
     # semantic_models
     'get_semantic_models',

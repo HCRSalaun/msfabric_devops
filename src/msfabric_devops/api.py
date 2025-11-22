@@ -1,4 +1,3 @@
-from azure.identity import ClientSecretCredential # type: ignore
 from . import config
 import time
 import json
@@ -6,7 +5,7 @@ import requests
 
 def invoke_fabric_api_request(
     uri,
-    auth_token=None,
+    token=None,
     method="GET",
     body=None,
     content_type="application/json; charset=utf-8",
@@ -16,7 +15,7 @@ def invoke_fabric_api_request(
 ):
     headers = {
         "Content-Type": content_type,
-        "Authorization": f"Bearer {auth_token}"
+        "Authorization": f"Bearer {token}"
     }
 
     if not api_url:
@@ -87,7 +86,7 @@ def invoke_fabric_api_request(
             if retry_count < 3:
                 return invoke_fabric_api_request(
                     uri=uri,
-                    auth_token=auth_token,
+                    token=token,
                     method=method,
                     body=body,
                     content_type=content_type,
