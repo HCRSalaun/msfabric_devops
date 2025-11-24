@@ -301,7 +301,7 @@ Imports a Fabric item (semantic model or report) from a local PBIP folder into a
 
 **Example:**
 ```python
-from msfabric_devops import get_access_token, import_fabric_item
+from msfabric_devops import get_access_token,import_item
 
 token = get_access_token()
 
