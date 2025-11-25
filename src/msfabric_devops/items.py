@@ -348,6 +348,7 @@ def delete_item_by_id(
     item_id: str
 ):
     result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}", method="DELETE")
+    config.print_color(f"Deleted item: {item_id}", "green")
     return result
 
 
