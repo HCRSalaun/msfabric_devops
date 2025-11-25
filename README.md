@@ -39,19 +39,6 @@ pip install msfabric-devops
 - Azure AD service principal credentials (tenant ID, client ID, client secret)
 - `azure-identity` package
 
-<!--
-## Configuration
-
-The package uses environment variables for configuration. Set the following variables:
-
-- `TENANT_ID`: Azure AD Tenant ID
-- `CLIENT_ID`: Azure AD Application (Client) ID
-- `CLIENT_SECRET`: Azure AD Client Secret
-- `WORKSPACE_ID`: (Optional) Default Fabric workspace ID
-- `SEMANTIC_MODEL_ID`: (Optional) Default semantic model ID
-
-Alternatively, you can pass these values directly to the authentication functions.
--->
 ## Authentication
 
 ### `get_access_token(tenant_id=None, client_id=None, client_secret=None) -> str`
@@ -59,9 +46,9 @@ Alternatively, you can pass these values directly to the authentication function
 Authenticates using a service principal and returns an access token for the Fabric REST API.
 
 **Parameters:**
-- `tenant_id` (str, optional): Azure AD Tenant ID. If None, uses value from environment variable `TENANT_ID`.
-- `client_id` (str, optional): Azure AD Application (client) ID. If None, uses value from environment variable `CLIENT_ID`.
-- `client_secret` (str, optional): Azure AD Client Secret. If None, uses value from environment variable `CLIENT_SECRET`.
+- `tenant_id` (str): Azure AD Tenant ID.
+- `client_id` (str): Azure AD Application (client) ID.
+- `client_secret` (str): Azure AD Client Secret.
 
 **Returns:**
 - `str`: A valid access token string for authenticating Fabric API requests.

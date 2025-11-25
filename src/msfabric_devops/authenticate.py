@@ -14,9 +14,9 @@ def get_credential(
     return credential
 
 def get_access_token(
-    tenant_id: str = None,
-    client_id: str = None,
-    client_secret: str = None
+    tenant_id: str,
+    client_id: str,
+    client_secret: str
 ) -> str:
     """
     Authenticate using a service principal and return an access token
@@ -24,14 +24,12 @@ def get_access_token(
 
     Parameters
     ----------
-    tenant_id : str, optional
-        Azure AD Tenant ID. If None, uses value from config.py.
-    client_id : str, optional
-        Azure AD Application (client) ID. If None, uses value from config.py.
-    client_secret : str, optional
-        Azure AD Client Secret. If None, uses value from config.py.
-    scope : list[str], optional
-        List of scopes for the token. Defaults to Power BI API scope.
+    tenant_id : str
+        Azure AD Tenant ID.
+    client_id : str
+        Azure AD Application (client) ID.
+    client_secret : str
+        Azure AD Client Secret.
 
     Returns
     -------
