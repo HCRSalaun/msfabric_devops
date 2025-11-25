@@ -12,34 +12,26 @@ SEMANTIC_MODEL_ID = os.getenv("SEMANTIC_MODEL_ID")
 
 
 def print_color(text, color="white", bold=False, bg=None):
-    """
-    Print colored text using ANSI escape codes.
-
-    Parameters:
-        text (str): Text to print
-        color (str): Text color ('black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white')
-        bold (bool): If True, make text bold
-        bg (str): Background color (same names as text color)
-    """
     colors = {
-        "black": 30,
-        "red": 31,
-        "green": 32,
-        "yellow": 33,
-        "blue": 34,
-        "magenta": 35,
-        "cyan": 36,
-        "white": 37
+        "black": 30, "red": 31, "green": 32, "yellow": 33,
+        "blue": 34, "magenta": 35, "cyan": 36, "white": 37
     }
 
-    # Text color code
-    color_code = colors.get(color.lower(), 37)
-    # Bold code
-    bold_code = "1;" if bold else ""
-    # Background color code
-    bg_code = ""
-    if bg:
-        bg_num = colors.get(bg.lower(), 37) - 30 + 40  # convert fg code to bg code
-        bg_code = f";{bg_num}"
+    parts = []
 
-    print(f"\033[{bold_code}{color_code}{bg_code}m{text}\033[0m")
+    if bold:
+        parts.append("1")
+
+    parts.append(str(colors.get(color.lower(), 37)))
+
+    if bg:
+        bg_num = colors.get(bg.lower(), 37) - 30 + 40
+        parts.append(str(bg_num))
+
+    ansi = ";".join(parts)
+
+    # Safe: write start + text + reset in a **single** print
+    print(f"\033[{ansi}m{text}\033[0m", end="")
+
+    # Extra hard reset (sometimes required on Windows / VSCode / zsh)
+    print("\033[0m")

@@ -353,13 +353,13 @@ def delete_item_by_id(
 
 
 def main():
-    token = authenticate.get_access_token(tenant_id=config.TENANT_ID, client_id=config.CLIENT_ID, client_secret=config.CLIENT_SECRET)
+    token = authenticate.get_access_token()
 
     config.print_color(get_items(                   token=token, workspace_id=config.WORKSPACE_ID)                                      ,"green")
     config.print_color(get_item_by_id(              token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
     config.print_color(get_items_by_name(           token=token, workspace_id=config.WORKSPACE_ID, item_name="test")                    ,"green")
     config.print_color(get_item_definition_by_id(   token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
-    config.print_color(import_item(         token=token, workspace_id=config.WORKSPACE_ID, path="../output", item_properties={"displayName":"test2"}, retain_roles = False),"green")
+    print(import_item(         token=token, workspace_id=config.WORKSPACE_ID, path="../output", item_properties={"displayName":"test2"}, retain_roles = False))
     #config.print_color(delete_item_by_id( token=token, workspace_id=config.WORKSPACE_ID, item_id = ""))
 if __name__ == "__main__":
     main()
