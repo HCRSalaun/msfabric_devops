@@ -8,6 +8,42 @@ from . import config
 from . import authenticate
 
 
+def get_partitions(tmdl_content: str):
+    """
+    Extract all partition blocks from a TMDL file.
+    Returns a list of strings, each containing one partition block.
+    """
+    # Match 'partition <name> = <mode>' until the next unindented line or end of file
+    pattern = re.compile(
+        r"^\tpartition[\s\S]*?=(?:[\s\S]*?)(?=\n\n)",
+        re.MULTILINE | re.DOTALL
+    )
+    partitions = pattern.findall(tmdl_content)
+    return partitions
+
+def set_partitions(tmdl_content: str, new_partitions: list[str], delimiter: str = "\r\n") -> str:
+    """
+    Remove all existing partition blocks in TMDL content and insert new partitions once
+    at the location of the first partition block (or append at the end if none found).
+    """
+    # Regex to match all partition blocks
+    pattern = r"(\tpartition[\s\S]*?=\s*```[\s\S]*?```(?:\n\t.*)*)"
+
+    matches = list(re.finditer(pattern, tmdl_content, flags=re.MULTILINE))
+
+    if matches:
+        # Use the start of the first match and the end of the last match
+        start = matches[0].start()
+        end = matches[-1].end()
+
+        # Replace all partition blocks with new partitions exactly once
+        replaced_content = tmdl_content[:start] + delimiter.join(new_partitions) + tmdl_content[end:]
+    else:
+        # Do nothing
+        replaced_content = tmdl_content
+
+    return replaced_content
+
 def get_items(
     token: str,
     workspace_id: str
@@ -74,14 +110,15 @@ def get_item_definition_by_id(token: str, workspace_id: str, item_id: str, outpu
                     print(f"⚠️ Skipped {path} (unsupported payloadType: {payload_type})")
     return response
 
-
 def import_item(
     token: str,
     workspace_id: str,
     path: str,
     item_properties: dict | None = None,
     skip_if_exists: bool = False,
-    retain_roles:bool = False
+    retain_roles:bool = False,
+    retain_all_partitions:bool = False,
+    retain_partitions_tables: list[str] = []
 ):
     """
     Imports .pbir or .pbism items from PBIP folder into a Fabric workspace.
@@ -233,15 +270,35 @@ def import_item(
     ]
 
     item_id = existing[0]["id"] if existing else None
+    published_item_definition = get_item_definition_by_id(token, workspace_id, item_id) if existing else None
 
     # ----------------------------------------------------------------------
-    # 7. Keep existing roles and update part payloads
+    # 7. Keep existing partitions and update part payloads
+    # ----------------------------------------------------------------------
+
+    if (retain_all_partitions or retain_partitions_tables) and existing:
+        partition_definitions = []
+
+        for file in published_item_definition.get("definition", {}).get("parts", []):
+            if re.match(r"definition/tables/.*\.tmdl", file['path']):
+                content = base64.b64decode(file['payload']).decode('utf-8')
+                file_bytes = content.encode("utf-8")
+                target_partitions = get_partitions(content)
+                for part in parts:
+                    if part["Path"] == file["path"]:
+                        original_content = base64.b64decode(part['Payload']).decode('utf-8')
+                        table_name = re.findall(r'table (.*)', original_content)[0]
+                        if retain_all_partitions or table_name in retain_partitions_tables:
+                            modified_content = set_partitions(original_content, target_partitions)
+                            part["Payload"] = base64.b64encode(modified_content.encode("utf-8")).decode("utf-8")
+
+    # ----------------------------------------------------------------------
+    # 8. Keep existing roles and update part payloads
     # ----------------------------------------------------------------------
 
     if retain_roles and existing:
         role_definitions = []
         role_names: list[str] = []
-        published_item_definition = get_item_definition_by_id(token, workspace_id, item_id)
 
         # remove roles from original path
         parts[:] = [
@@ -291,7 +348,7 @@ def import_item(
                 })
 
     # ----------------------------------------------------------------------
-    # 8. Create or update
+    # 9. Create or update
     # ----------------------------------------------------------------------
 
     if item_id is None:
@@ -355,11 +412,11 @@ def delete_item_by_id(
 def main():
     token = authenticate.get_access_token()
 
-    config.print_color(get_items(                   token=token, workspace_id=config.WORKSPACE_ID)                                      ,"green")
-    config.print_color(get_item_by_id(              token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
-    config.print_color(get_items_by_name(           token=token, workspace_id=config.WORKSPACE_ID, item_name="test")                    ,"green")
-    config.print_color(get_item_definition_by_id(   token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
-    print(import_item(         token=token, workspace_id=config.WORKSPACE_ID, path="../output", item_properties={"displayName":"test2"}, retain_roles = False))
+    #config.print_color(get_items(                   token=token, workspace_id=config.WORKSPACE_ID)                                      ,"green")
+    #config.print_color(get_item_by_id(              token=token, workspace_id=config.WORKSPACE_ID, item_id = config.SEMANTIC_MODEL_ID)  ,"green")
+    #config.print_color(get_items_by_name(           token=token, workspace_id=config.WORKSPACE_ID, item_name="test")                    ,"green")
+    #config.print_color(get_item_definition_by_id(   token=token, workspace_id=config.WORKSPACE_ID, item_id = "c90bc409-0d20-4c49-a898-c3b0038e0c78").get("definition", {}).get("parts", [])  ,"green")
+    print(import_item(         token=token, workspace_id=config.WORKSPACE_ID, path="../output", item_properties={"displayName":"test2"}, retain_roles = False, retain_partitions_tables={"Sales"}))
     #config.print_color(delete_item_by_id( token=token, workspace_id=config.WORKSPACE_ID, item_id = ""))
 if __name__ == "__main__":
     main()

@@ -19,7 +19,7 @@ A Python package to interact with Microsoft Fabric objects, providing functional
   - [get_item_by_id](#get_item_by_idtoken-workspace_id-item_id---dict)
   - [get_items_by_name](#get_items_by_nametoken-workspace_id-item_name---listdict)
   - [get_item_definition_by_id](#get_item_definition_by_idtoken-workspace_id-item_id-output_dirnone-formatnone---dict)
-  - [import_item](#import_itemtoken-workspace_id-path-item_propertiesnone-skip_if_existsfalse-retain_rolesfalse---dict)
+  - [import_item](#import_itemtoken-workspace_id-path-item_propertiesnone-skip_if_existsfalse-retain_rolesfalse-retain_all_partitionsfalse-retain_partitions_tablesnone---dict)
   - [delete_item_by_id](#delete_item_by_idtoken-workspace_id-item_id---none)
 - [Internal API Functions](#internal-api-functions)
   - [invoke_fabric_api_request](#invoke_fabric_api_requesturi-tokennone-methodget-bodynone-content_typeapplicationjson-charsetutf-8-timeout_sec240-retry_count0-api_urlnone---dict--list--none)
@@ -254,7 +254,7 @@ definition = get_item_definition_by_id(
 )
 ```
 
-### `import_item(token, workspace_id, path, item_properties=None, skip_if_exists=False, retain_roles=False) -> dict`
+### `import_item(token, workspace_id, path, item_properties=None, skip_if_exists=False, retain_roles=False, retain_all_partitions=False, retain_partitions_tables=None) -> dict`
 
 Imports a Fabric item (semantic model or report) from a local PBIP folder into a Fabric workspace. Supports both `.pbism` (semantic models) and `.pbir` (reports) files.
 
@@ -273,6 +273,8 @@ Imports a Fabric item (semantic model or report) from a local PBIP folder into a
   - Merges them with the new definition
   - Updates `definition/model.tmdl` to include role references
   Defaults to False.
+- `retain_all_partitions` (bool, optional): If True, preserves partition definitions for all tables in the published model when updating. The function will copy partition blocks from the currently published `definition/tables/*.tmdl` parts into the matching table parts in the new definition. Defaults to False.
+- `retain_partitions_tables` (list[str] | None, optional): List of table names for which to preserve partitions. When provided, only partitions for tables whose names are in this list will be retained. If `retain_all_partitions` is True this parameter is ignored. Defaults to None.
 
 **Returns:**
 - `dict`: Dictionary containing the imported/updated item details with keys: `id`, `displayName`, `type`.
@@ -284,24 +286,35 @@ Imports a Fabric item (semantic model or report) from a local PBIP folder into a
   - Files with `.abf` extension
   - Files in `.pbi` directory
 - **Report Connections**: For reports using byPath connections, you must provide `item_properties.semanticModelId` to convert to byConnection format
+- **Preserve Partitions**: When `retain_all_partitions=True` the importer will read the published model definition and copy partition blocks found in `definition/tables/*.tmdl` into the corresponding table parts of the new definition. Alternatively, pass `retain_partitions_tables=["Table A","Table B"]` to keep partitions only for specific tables.
 - **Create vs Update**: Creates a new item if none exists with the same name and type, otherwise updates the existing item
 
-**Example:**
+**Examples:**
 ```python
-from msfabric_devops import get_access_token,import_item
+from msfabric_devops import get_access_token, import_item
 
 token = get_access_token()
 
-# Import a semantic model
+# Import a semantic model and preserve all partitions and roles from the published model
 result = import_item(
     token,
     "workspace-id",
     r"C:\path\to\semantic-model-pbip",
     item_properties={"displayName": "My Semantic Model"},
-    retain_roles=True
+    retain_roles=True,
+    retain_all_partitions=True
 )
 
-# Import a report connected to a semantic model
+# Import a semantic model and preserve partitions only for specific tables
+result = import_item(
+    token,
+    "workspace-id",
+    r"C:\path\to\semantic-model-pbip",
+    item_properties={"displayName": "My Semantic Model"},
+    retain_partitions_tables=["Sales","Items"]
+)
+
+# Import a report connected to a semantic model (requires semanticModelId for byPath reports)
 result = import_item(
     token,
     "workspace-id",
