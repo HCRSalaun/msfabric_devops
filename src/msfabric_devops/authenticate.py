@@ -1,54 +1,73 @@
-from azure.identity import ClientSecretCredential, DefaultAzureCredential # type: ignore
+from azure.identity import ClientSecretCredential, DefaultAzureCredential  # type: ignore
+
 from . import config
 
+
 def get_credential(
-    tenant_id: str = None,
-    client_id: str = None,
-    client_secret: str = None
-) -> ClientSecretCredential:
-
-    if tenant_id is None and client_id is None and client_secret is None:
-        credential = DefaultAzureCredential()
-
-    else :
-        credential = ClientSecretCredential(
-            tenant_id=tenant_id,
-            client_id=client_id,
-            client_secret=client_secret
-        )
-    return credential
-
-def get_access_token(
-    tenant_id: str = None,
-    client_id: str = None,
-    client_secret: str = None
-) -> str:
+    tenant_id: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> ClientSecretCredential | DefaultAzureCredential:
     """
-    Authenticate using a service principal and return an access token
-    for the Power BI REST API.
+    Return an Azure credential for the given authentication method.
+
+    Falls back to ``DefaultAzureCredential`` (managed identity, environment
+    variables, Azure CLI, interactive browser, etc.) when no explicit
+    credentials are provided.
 
     Parameters
     ----------
-    tenant_id : str
+    tenant_id : str, optional
         Azure AD Tenant ID.
-    client_id : str
+    client_id : str, optional
         Azure AD Application (client) ID.
-    client_secret : str
+    client_secret : str, optional
+        Azure AD Client Secret.
+
+    Returns
+    -------
+    ClientSecretCredential | DefaultAzureCredential
+        An azure-identity credential ready to call ``get_token()``.
+    """
+    if tenant_id is None and client_id is None and client_secret is None:
+        return DefaultAzureCredential()
+    return ClientSecretCredential(
+        tenant_id=tenant_id,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+
+def get_access_token(
+    tenant_id: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> str:
+    """
+    Authenticate and return a bearer access token for the Fabric REST API.
+
+    Parameters
+    ----------
+    tenant_id : str, optional
+        Azure AD Tenant ID.
+    client_id : str, optional
+        Azure AD Application (client) ID.
+    client_secret : str, optional
         Azure AD Client Secret.
 
     Returns
     -------
     str
-        A valid access token string.
+        A valid access token string. Tokens are short-lived (~1 hour); use
+        ``FabricClient`` for long-running scripts as it refreshes automatically.
     """
     credential = get_credential(
         tenant_id=tenant_id,
         client_id=client_id,
-        client_secret=client_secret
+        client_secret=client_secret,
     )
+    return credential.get_token(*config.SCOPE).token
 
-    token = credential.get_token(*config.SCOPE)
-    return token.token
 
 def main():
     token = get_access_token()

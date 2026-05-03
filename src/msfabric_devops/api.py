@@ -1,21 +1,26 @@
-from . import config
-import time
 import json
+import time
+from typing import Any
+
 import requests
 
+from . import config
+from .exceptions import FabricError, FabricThrottlingError
+
+
 def invoke_fabric_api_request(
-    uri,
-    token=None,
-    method="GET",
-    body=None,
-    content_type="application/json; charset=utf-8",
-    timeout_sec=240,
-    retry_count=0,
-    api_url=config.API_URL
-):
+    uri: str,
+    token: str | None = None,
+    method: str = "GET",
+    body: Any = None,
+    content_type: str = "application/json; charset=utf-8",
+    timeout_sec: int = 240,
+    retry_count: int = 0,
+    api_url: str = config.API_URL,
+) -> Any:
     headers = {
         "Content-Type": content_type,
-        "Authorization": f"Bearer {token}"
+        "Authorization": f"Bearer {token}",
     }
 
     if not api_url:
@@ -30,7 +35,7 @@ def invoke_fabric_api_request(
             headers=headers,
             json=body if isinstance(body, (dict, list)) else None,
             data=None if isinstance(body, (dict, list)) else body,
-            timeout=timeout_sec
+            timeout=timeout_sec,
         )
 
         # Handle Long-Running Operation (202)
@@ -38,7 +43,7 @@ def invoke_fabric_api_request(
             while True:
                 async_url = response.headers.get("Location")
                 if not async_url:
-                    raise Exception("LRO response has no Location header")
+                    raise FabricError("LRO response has no Location header")
                 print("LRO - Waiting for request to complete in service.")
                 time.sleep(5)
                 lro_response = requests.get(async_url, headers=headers)
@@ -51,38 +56,42 @@ def invoke_fabric_api_request(
                         if result_url:
                             response = requests.get(result_url, headers=headers)
                         else:
-                            return None  # LRO has no result
+                            return None  # LRO has no result body
                     else:
-                        error = lro_content.get("error")
-                        if error:
-                            raise Exception(f"LRO API Error: {error.get('errorCode')} - {error.get('message')}")
+                        error = lro_content.get("error", {})
+                        raise FabricError(
+                            f"LRO failed: {error.get('errorCode')} - {error.get('message')}"
+                        )
                     break
 
         # Parse JSON response
         if response.content:
             content_bytes = response.content
-            content_text = content_bytes[3:].decode("utf-8") if content_bytes.startswith(b'\xef\xbb\xbf') else response.text
+            content_text = (
+                content_bytes[3:].decode("utf-8")
+                if content_bytes.startswith(b"\xef\xbb\xbf")
+                else response.text
+            )
             json_result = json.loads(content_text)
 
-            # ✅ Raise if API returned an error in JSON
             if isinstance(json_result, dict) and "errorCode" in json_result:
-                raise Exception(f"API Error: {json_result['errorCode']} - {json_result.get('message')}")
+                raise FabricError(
+                    f"API Error: {json_result['errorCode']} - {json_result.get('message')}"
+                )
 
-            # Return value if present
             if isinstance(json_result, dict) and "value" in json_result:
-                json_result = json_result["value"]
+                return json_result["value"]
 
             return json_result
 
     except requests.exceptions.RequestException as ex:
-        response = getattr(ex, 'response', None)
+        raw_response = getattr(ex, "response", None)
 
-        # Handle throttling (429)
-        if response and response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            retry_after_seconds = int(retry_after) + 5 if retry_after and retry_after.isdigit() else 60
-            print(f"Too many requests (429). Sleeping {retry_after_seconds}s.")
-            time.sleep(retry_after_seconds)
+        if raw_response is not None and raw_response.status_code == 429:
+            retry_after = raw_response.headers.get("Retry-After")
+            wait = int(retry_after) + 5 if retry_after and retry_after.isdigit() else 60
+            print(f"Too many requests (429). Sleeping {wait}s.")
+            time.sleep(wait)
             if retry_count < 3:
                 return invoke_fabric_api_request(
                     uri=uri,
@@ -92,9 +101,8 @@ def invoke_fabric_api_request(
                     content_type=content_type,
                     timeout_sec=timeout_sec,
                     retry_count=retry_count + 1,
-                    api_url=api_url
+                    api_url=api_url,
                 )
-            else:
-                raise Exception(f"Exceeded max retries after 429")
-        else:
-            raise Exception(str(ex))
+            raise FabricThrottlingError("Exceeded max retries after 429 Too Many Requests")
+
+        raise FabricError(str(ex))

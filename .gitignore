@@ -68,3 +68,6 @@ dmypy.json
 
 #output folder
 output/
+
+#claude
+CLAUDE.md

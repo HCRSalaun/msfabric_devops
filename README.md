@@ -6,26 +6,30 @@ A Python package to interact with Microsoft Fabric objects, providing functional
 
 - [Installation](#installation)
 - [Requirements](#requirements)
-- [Authentication](#authentication)
-  - [get_access_token](#get_access_tokentenant_idnone-client_idnone-client_secretnone---str)
-- [Workspaces](#workspaces)
-  - [get_workspaces](#get_workspacestoken---listdict)
-  - [get_workspace_by_id](#get_workspace_by_idtoken-workspace_id---dict)
-  - [get_workspaces_by_name](#get_workspaces_by_nametoken-workspace_name---listdict)
-  - [create_workspace](#create_workspacetoken-workspace_name---dict)
-  - [delete_workspace](#delete_workspacetoken-workspace_id---none)
-- [Items](#items)
-  - [get_items](#get_itemstoken-workspace_id---listdict)
-  - [get_item_by_id](#get_item_by_idtoken-workspace_id-item_id---dict)
-  - [get_items_by_name](#get_items_by_nametoken-workspace_id-item_name---listdict)
-  - [get_item_definition_by_id](#get_item_definition_by_idtoken-workspace_id-item_id-output_dirnone-formatnone---dict)
-  - [import_item](#import_itemtoken-workspace_id-path-item_propertiesnone-skip_if_existsfalse-retain_rolesfalse-retain_all_partitionsfalse-retain_partitions_tablesnone---dict)
-  - [delete_item_by_id](#delete_item_by_idtoken-workspace_id-item_id---none)
-- [Internal API Functions](#internal-api-functions)
-  - [invoke_fabric_api_request](#invoke_fabric_api_requesturi-tokennone-methodget-bodynone-content_typeapplicationjson-charsetutf-8-timeout_sec240-retry_count0-api_urlnone---dict--list--none)
+- [Quick Start](#quick-start)
+- [FabricClient](#fabricclient)
+  - [Authentication](#authentication)
+  - [Workspaces](#workspaces)
+    - [get\_workspaces](#get_workspaces)
+    - [get\_workspace\_by\_id](#get_workspace_by_id)
+    - [get\_workspaces\_by\_name](#get_workspaces_by_name)
+    - [create\_workspace](#create_workspace)
+    - [delete\_workspace](#delete_workspace)
+  - [Items](#items)
+    - [get\_items](#get_items)
+    - [get\_item\_by\_id](#get_item_by_id)
+    - [get\_items\_by\_name](#get_items_by_name)
+    - [get\_item\_definition\_by\_id](#get_item_definition_by_id)
+    - [import\_item](#import_item)
+    - [delete\_item\_by\_id](#delete_item_by_id)
+- [Semantic Models](#semantic-models)
+  - [set\_semantic\_model\_parameters](#set_semantic_model_parameters)
+- [Error Handling](#error-handling)
 - [Complete Example](#complete-example)
 - [License](#license)
 - [Author](#author)
+
+---
 
 ## Installation
 
@@ -35,379 +39,430 @@ pip install msfabric-devops
 
 ## Requirements
 
-- Python >= 3.9
-- Azure AD service principal credentials (tenant ID, client ID, client secret)
-- `azure-identity` package
+- Python >= 3.10
+- Azure AD service principal **or** any credential supported by `DefaultAzureCredential` (managed identity, Azure CLI, etc.)
 
-## Authentication
+---
 
-### `get_access_token(tenant_id=None, client_id=None, client_secret=None) -> str`
+## Quick Start
 
-Authenticates using a service principal and returns an access token for the Fabric REST API.
-
-**Parameters:**
-- `tenant_id` (str): Azure AD Tenant ID.
-- `client_id` (str): Azure AD Application (client) ID.
-- `client_secret` (str): Azure AD Client Secret.
-
-**Returns:**
-- `str`: A valid access token string for authenticating Fabric API requests.
-
-**Example:**
 ```python
-from msfabric_devops import get_access_token
+from msfabric_devops import FabricClient
 
-token = get_access_token(
+# Authenticate with a service principal
+client = FabricClient(
     tenant_id="your-tenant-id",
     client_id="your-client-id",
-    client_secret="your-client-secret"
+    client_secret="your-client-secret",
 )
+
+# List workspaces
+for ws in client.get_workspaces():
+    print(ws["displayName"])
+
+# Import a semantic model
+result = client.import_item(
+    workspace_id="your-workspace-id",
+    path=r"C:\exports\MyModel.SemanticModel",
+)
+print(f"Imported: {result['displayName']} ({result['id']})")
 ```
 
-## Workspaces
+---
 
-### `get_workspaces(token) -> list[dict]`
+## FabricClient
 
-Retrieves all Fabric workspaces accessible to the authenticated user.
+`FabricClient` is the recommended way to interact with the Fabric REST API. It manages credentials and refreshes the bearer token automatically when it is about to expire, so you never need to handle tokens yourself.
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
+### Authentication
 
-**Returns:**
-- `list[dict]`: List of workspace dictionaries containing workspace details (id, displayName, type, etc.).
-
-**Example:**
 ```python
-from msfabric_devops import get_access_token, get_workspaces
+from msfabric_devops import FabricClient
 
-token = get_access_token()
-workspaces = get_workspaces(token)
-for workspace in workspaces:
-    print(workspace["displayName"])
+# Option 1 — service principal (explicit credentials)
+client = FabricClient(
+    tenant_id="your-tenant-id",
+    client_id="your-client-id",
+    client_secret="your-client-secret",
+)
+
+# Option 2 — DefaultAzureCredential (managed identity, Azure CLI, environment variables, …)
+client = FabricClient()
 ```
 
-### `get_workspace_by_id(token, workspace_id) -> dict`
+**Parameters**
 
-Retrieves a specific workspace by its ID.
+| Parameter | Type | Description |
+|---|---|---|
+| `tenant_id` | `str`, optional | Azure AD Tenant ID |
+| `client_id` | `str`, optional | Azure AD Application (client) ID |
+| `client_secret` | `str`, optional | Azure AD Client Secret |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
+When all three are omitted, `DefaultAzureCredential` is used (suitable for managed identities, `az login`, and environment-variable-based auth).
 
-**Returns:**
-- `dict`: Workspace dictionary containing workspace details. Returns empty dict if not found.
+---
 
-**Example:**
+### Workspaces
+
+#### `get_workspaces`
+
+Returns all Fabric workspaces accessible to the authenticated principal.
+
 ```python
-from msfabric_devops import get_access_token, get_workspace_by_id
-
-token = get_access_token()
-workspace = get_workspace_by_id(token, "workspace-id-here")
-print(workspace["displayName"])
+workspaces = client.get_workspaces()
+for ws in workspaces:
+    print(f"{ws['displayName']}  ({ws['id']})")
 ```
 
-### `get_workspaces_by_name(token, workspace_name) -> list[dict]`
+**Returns:** `list[dict]` — each dict contains at minimum `id` and `displayName`.
 
-Retrieves all workspaces matching a specific display name.
+---
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_name` (str): The display name to search for (exact match).
+#### `get_workspace_by_id`
 
-**Returns:**
-- `list[dict]`: List of workspace dictionaries matching the name.
+Returns a single workspace by its GUID.
 
-**Example:**
 ```python
-from msfabric_devops import get_access_token, get_workspaces_by_name
-
-token = get_access_token()
-workspaces = get_workspaces_by_name(token, "My Workspace")
+ws = client.get_workspace_by_id("workspace-id")
+print(ws["displayName"])
 ```
 
-### `create_workspace(token, workspace_name) -> dict`
+**Parameters**
 
-Creates a new Fabric workspace with the specified name.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the target workspace |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_name` (str): Display name for the new workspace.
+**Returns:** `dict` — workspace object, or empty dict if not found.
 
-**Returns:**
-- `dict`: Created workspace dictionary containing workspace details. Returns None if workspace already exists (with a warning message).
+---
 
-**Example:**
+#### `get_workspaces_by_name`
+
+Returns all workspaces whose `displayName` matches the given name (exact, case-sensitive). Multiple results are possible because Fabric permits duplicate names.
+
 ```python
-from msfabric_devops import get_access_token, create_workspace
-
-token = get_access_token()
-workspace = create_workspace(token, "New Workspace")
+matches = client.get_workspaces_by_name("My Workspace")
 ```
 
-### `delete_workspace(token, workspace_id) -> None`
+**Parameters**
 
-Deletes a Fabric workspace by its ID.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_name` | `str` | Exact display name to search for |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace to delete.
+**Returns:** `list[dict]`
 
-**Returns:**
-- `None`: No return value on success. Raises exception on error.
+---
 
-**Example:**
+#### `create_workspace`
+
+Creates a new workspace. Returns `None` with a warning if a workspace with that name already exists.
+
 ```python
-from msfabric_devops import get_access_token, delete_workspace
-
-token = get_access_token()
-delete_workspace(token, "workspace-id-here")
+ws = client.create_workspace("My New Workspace")
+if ws:
+    print(f"Created: {ws['id']}")
 ```
 
-## Items
+**Parameters**
 
-### `get_items(token, workspace_id) -> list[dict]`
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_name` | `str` | Display name for the new workspace |
 
-Retrieves all items in a specified Fabric workspace.
+**Returns:** `dict` on success, `None` if the name already exists.
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
+---
 
-**Returns:**
-- `list[dict]`: List of item dictionaries containing item details (id, displayName, type, etc.).
+#### `delete_workspace`
 
-**Example:**
+Deletes a workspace by its GUID.
+
 ```python
-from msfabric_devops import get_access_token, get_items
+client.delete_workspace("workspace-id")
+```
 
-token = get_access_token()
-items = get_items(token, "workspace-id-here")
+**Parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace to delete |
+
+---
+
+### Items
+
+#### `get_items`
+
+Returns all items in a workspace.
+
+```python
+items = client.get_items("workspace-id")
 for item in items:
-    print(f"{item['displayName']} ({item['type']})")
+    print(f"{item['displayName']}  [{item['type']}]")
 ```
 
-### `get_item_by_id(token, workspace_id, item_id) -> dict`
+**Parameters**
 
-Retrieves a specific item by its ID within a workspace.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
-- `item_id` (str): The unique identifier of the item.
+**Returns:** `list[dict]`
 
-**Returns:**
-- `dict`: Item dictionary containing item details.
+---
 
-**Example:**
+#### `get_item_by_id`
+
+Returns a single item by its GUID.
+
 ```python
-from msfabric_devops import get_access_token, get_item_by_id
-
-token = get_access_token()
-item = get_item_by_id(token, "workspace-id", "item-id")
+item = client.get_item_by_id("workspace-id", "item-id")
 print(item["displayName"])
 ```
 
-### `get_items_by_name(token, workspace_id, item_name) -> list[dict]`
+**Parameters**
 
-Retrieves all items matching a specific display name within a workspace.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace |
+| `item_id` | `str` | The GUID of the item |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
-- `item_name` (str): The display name to search for (exact match).
+**Returns:** `dict`
 
-**Returns:**
-- `list[dict]`: List of item dictionaries matching the name.
+---
 
-**Example:**
+#### `get_items_by_name`
+
+Returns all items whose `displayName` matches the given name (exact, case-sensitive).
+
 ```python
-from msfabric_devops import get_access_token, get_items_by_name
-
-token = get_access_token()
-items = get_items_by_name(token, "workspace-id", "My Item")
+items = client.get_items_by_name("workspace-id", "My Model")
 ```
 
-### `get_item_definition_by_id(token, workspace_id, item_id, output_dir=None, format=None) -> dict`
+**Parameters**
 
-Exports an item definition from a Fabric workspace. Optionally saves the definition files to a local directory.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace |
+| `item_name` | `str` | Exact display name to search for |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
-- `item_id` (str): The unique identifier of the item.
-- `output_dir` (str, optional): Local directory path where definition files should be saved. If provided, files are decoded from Base64 and written to disk. Defaults to None (no files saved).
-- `format` (str, optional): Export format (e.g., 'PBIP'). Defaults to None.
+**Returns:** `list[dict]`
 
-**Returns:**
-- `dict`: Response dictionary containing the definition with parts array. Each part includes path, payload (Base64 encoded), and payloadType.
+---
 
-**Example:**
+#### `get_item_definition_by_id`
+
+Exports an item definition from a workspace. Optionally writes the decoded files to a local directory.
+
 ```python
-from msfabric_devops import get_access_token, get_item_definition_by_id
+# Get the raw definition dict
+definition = client.get_item_definition_by_id("workspace-id", "item-id")
 
-token = get_access_token()
-definition = get_item_definition_by_id(
-    token,
-    "workspace-id",
-    "item-id",
-    output_dir="./output"
+# Export files to disk
+definition = client.get_item_definition_by_id(
+    workspace_id="workspace-id",
+    item_id="item-id",
+    output_dir=r"C:\exports\MyModel",
+    format="TMDL",
 )
 ```
 
-### `import_item(token, workspace_id, path, item_properties=None, skip_if_exists=False, retain_roles=False, retain_all_partitions=False, retain_partitions_tables=None) -> dict`
+**Parameters**
 
-Imports a Fabric item (semantic model or report) from a local PBIP folder into a Fabric workspace. Supports both `.pbism` (semantic models) and `.pbir` (reports) files.
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace |
+| `item_id` | `str` | The GUID of the item |
+| `output_dir` | `str`, optional | Local directory where decoded files are written |
+| `format` | `str`, optional | Export format, e.g. `"TMDL"` or `"PBIP"` |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the target workspace.
-- `path` (str): Local folder path containing the PBIP export. Must contain either a `.pbism` or `.pbir` file.
-- `item_properties` (dict, optional): Dictionary to override item properties:
-  - `displayName` (str): Override the display name
-  - `semanticModelId` (str): **Required** when importing reports that use byPath connections to semantic models
-  - `type` (str): Override the item type (usually auto-detected)
-- `skip_if_exists` (bool, optional): If True, does not update the definition if an item with the same name and type already exists. Defaults to False.
-- `retain_roles` (bool, optional): If True, preserves existing RLS (Row-Level Security) roles from the published model when updating. This option:
-  - Fetches the current model definition
-  - Extracts role definitions from `definition/roles/*.tmdl` files
-  - Merges them with the new definition
-  - Updates `definition/model.tmdl` to include role references
-  Defaults to False.
-- `retain_all_partitions` (bool, optional): If True, preserves partition definitions for all tables in the published model when updating. The function will copy partition blocks from the currently published `definition/tables/*.tmdl` parts into the matching table parts in the new definition. Defaults to False.
-- `retain_partitions_tables` (list[str] | None, optional): List of table names for which to preserve partitions. When provided, only partitions for tables whose names are in this list will be retained. If `retain_all_partitions` is True this parameter is ignored. Defaults to None.
+**Returns:** `dict` — raw API response containing the definition with a `parts` array. Each part includes `path`, `payload` (Base64-encoded), and `payloadType`.
 
-**Returns:**
-- `dict`: Dictionary containing the imported/updated item details with keys: `id`, `displayName`, `type`.
+---
 
-**Behavior:**
-- **Item Detection**: Automatically detects item type based on `.pbism` (SemanticModel) or `.pbir` (Report) files
-- **File Processing**: Processes all files in the folder except:
-  - Files starting with `item.`
-  - Files with `.abf` extension
-  - Files in `.pbi` directory
-- **Report Connections**: For reports using byPath connections, you must provide `item_properties.semanticModelId` to convert to byConnection format
-- **Preserve Partitions**: When `retain_all_partitions=True` the importer will read the published model definition and copy partition blocks found in `definition/tables/*.tmdl` into the corresponding table parts of the new definition. Alternatively, pass `retain_partitions_tables=["Table A","Table B"]` to keep partitions only for specific tables.
-- **Create vs Update**: Creates a new item if none exists with the same name and type, otherwise updates the existing item
+#### `import_item`
 
-**Examples:**
+Imports a `.pbism` (semantic model) or `.pbir` (report) from a local PBIP folder into a workspace. Creates a new item if none exists with the same name and type; otherwise updates the existing item.
+
 ```python
-from msfabric_devops import get_access_token, import_item
-
-token = get_access_token()
-
-# Import a semantic model and preserve all partitions and roles from the published model
-result = import_item(
-    token,
-    "workspace-id",
-    r"C:\path\to\semantic-model-pbip",
-    item_properties={"displayName": "My Semantic Model"},
+# Import a semantic model
+result = client.import_item(
+    workspace_id="workspace-id",
+    path=r"C:\exports\MyModel.SemanticModel",
+    item_properties={"displayName": "My Model"},
     retain_roles=True,
-    retain_all_partitions=True
+    retain_all_partitions=True,
 )
 
-# Import a semantic model and preserve partitions only for specific tables
-result = import_item(
-    token,
-    "workspace-id",
-    r"C:\path\to\semantic-model-pbip",
-    item_properties={"displayName": "My Semantic Model"},
-    retain_partitions_tables=["Sales","Items"]
+# Import a semantic model and preserve partitions for specific tables only
+result = client.import_item(
+    workspace_id="workspace-id",
+    path=r"C:\exports\MyModel.SemanticModel",
+    item_properties={"displayName": "My Model"},
+    retain_partitions_tables=["Sales", "Items"],
 )
 
-# Import a report connected to a semantic model (requires semanticModelId for byPath reports)
-result = import_item(
-    token,
-    "workspace-id",
-    r"C:\path\to\report-pbip",
+# Import a report linked to a semantic model
+result = client.import_item(
+    workspace_id="workspace-id",
+    path=r"C:\exports\MyReport.Report",
     item_properties={
         "displayName": "My Report",
-        "semanticModelId": "existing-semantic-model-id"
-    }
+        "semanticModelId": "existing-semantic-model-id",
+    },
+)
+
+print(f"{result['displayName']}  ({result['id']})")
+```
+
+**Parameters**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `workspace_id` | `str` | — | The GUID of the destination workspace |
+| `path` | `str` | — | Local folder containing the PBIP export (must contain a `.pbism` or `.pbir` file) |
+| `item_properties` | `dict`, optional | `None` | Override `displayName`, `type`, or `semanticModelId` |
+| `skip_if_exists` | `bool` | `False` | Return existing item immediately without updating its definition |
+| `retain_roles` | `bool` | `False` | Preserve RLS roles from the published model |
+| `retain_all_partitions` | `bool` | `False` | Preserve partition definitions for all tables |
+| `retain_partitions_tables` | `list[str]`, optional | `None` | Preserve partitions for listed table names only (ignored when `retain_all_partitions=True`) |
+
+> **Note:** When importing a report that uses a `byPath` connection to a semantic model, `item_properties.semanticModelId` is required — the importer converts the connection to `byConnection` format automatically.
+
+**Returns:** `dict` with `id`, `displayName`, and `type`.
+
+---
+
+#### `delete_item_by_id`
+
+Deletes an item by its GUID.
+
+```python
+client.delete_item_by_id("workspace-id", "item-id")
+```
+
+**Parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `workspace_id` | `str` | The GUID of the workspace |
+| `item_id` | `str` | The GUID of the item to delete |
+
+---
+
+## Semantic Models
+
+Semantic model parameter updates operate on **local files** and do not require a `FabricClient` or any credentials.
+
+### `set_semantic_model_parameters`
+
+Updates Power Query parameter values in a local semantic model definition. Supports both TMDL (`definition/expressions.tmdl`) and TMSL (`model.bim`) formats, detected automatically.
+
+```python
+from msfabric_devops import set_semantic_model_parameters
+
+set_semantic_model_parameters(
+    path=r"C:\exports\MyModel.SemanticModel",
+    parameters={
+        "Param_Server": "prod-server",
+        "Param_Database": "sales_db",
+    },
 )
 ```
 
-### `delete_item_by_id(token, workspace_id, item_id) -> None`
+**Parameters**
 
-Deletes a Fabric item by its ID.
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `path` | `str` | — | Root directory of the semantic model (parent of `definition/` or folder containing `model.bim`) |
+| `parameters` | `dict[str, str]` | — | Mapping of parameter name → new value |
+| `fail_if_not_found` | `bool` | `False` | Raise `ValueError` if a parameter name is not found; when `False`, logs a warning and continues |
 
-**Parameters:**
-- `token` (str): Access token from `get_access_token()`.
-- `workspace_id` (str): The unique identifier of the workspace.
-- `item_id` (str): The unique identifier of the item to delete.
+**Raises:** `FileNotFoundError` if the model definition cannot be found at `path`.
 
-**Returns:**
-- `None`: No return value on success. Raises exception on error.
+---
 
-**Example:**
+## Error Handling
+
+All API errors raise typed exceptions that can be caught individually:
+
 ```python
-from msfabric_devops.authenticate import get_access_token
-from msfabric_devops import delete_item_by_id
+from msfabric_devops import FabricClient, FabricError, FabricThrottlingError
 
-token = get_access_token()
-delete_item_by_id(token, "workspace-id", "item-id")
+client = FabricClient(...)
+
+try:
+    result = client.import_item(workspace_id="...", path="...")
+except FabricThrottlingError:
+    print("API is throttled — retry later")
+except FabricError as e:
+    print(f"API error: {e}")
 ```
 
-## Internal API Functions
+| Exception | Raised when |
+|---|---|
+| `FabricError` | Base class for all API errors |
+| `FabricAuthError` | Authentication or token acquisition fails |
+| `FabricNotFoundError` | A requested resource does not exist |
+| `FabricThrottlingError` | The API returns 429 after all automatic retries are exhausted |
 
-### `invoke_fabric_api_request(uri, token=None, method="GET", body=None, content_type="application/json; charset=utf-8", timeout_sec=240, retry_count=0, api_url=None) -> dict | list | None`
+> **Note:** The library retries 429 responses automatically (up to 3 times, respecting the `Retry-After` header) before raising `FabricThrottlingError`.
 
-Low-level function to make requests to the Fabric REST API. Handles authentication, error handling, throttling, and long-running operations.
-
-**Parameters:**
-- `uri` (str): API endpoint URI (relative to base API URL).
-- `token` (str, optional): Bearer token for authentication.
-- `method` (str, optional): HTTP method ("GET", "POST", "DELETE", etc.). Defaults to "GET".
-- `body` (dict | list | str, optional): Request body. If dict/list, sent as JSON; if str, sent as raw data.
-- `content_type` (str, optional): Content-Type header. Defaults to "application/json; charset=utf-8".
-- `timeout_sec` (int, optional): Request timeout in seconds. Defaults to 240.
-- `retry_count` (int, optional): Internal retry counter for throttling. Defaults to 0.
-- `api_url` (str, optional): Base API URL. Defaults to "https://api.fabric.microsoft.com/v1".
-
-**Returns:**
-- `dict | list | None`: Parsed JSON response. Returns None for successful LRO operations with no result.
-
-**Features:**
-- **Long-Running Operations (LRO)**: Automatically polls Location header for 202 responses
-- **Throttling**: Retries up to 3 times on 429 (Too Many Requests) with exponential backoff
-- **Error Handling**: Raises exceptions for API errors and network issues
-- **JSON Parsing**: Automatically extracts `value` field from responses if present
+---
 
 ## Complete Example
 
 ```python
-from msfabric_devops import (
-    get_access_token,
-    get_workspaces,
-    create_workspace,
-    get_items,
-    import_item
+from msfabric_devops import FabricClient, set_semantic_model_parameters
+
+# --- 1. Connect ---
+client = FabricClient(
+    tenant_id="your-tenant-id",
+    client_id="your-client-id",
+    client_secret="your-client-secret",
 )
 
-# Authenticate
-token = get_access_token()
+# --- 2. Workspaces ---
+workspaces = client.get_workspaces()
+print(f"Found {len(workspaces)} workspace(s)")
 
-# List all workspaces
-workspaces = get_workspaces(token)
-print(f"Found {len(workspaces)} workspaces")
+ws = client.create_workspace("My DevOps Workspace")
+ws_id = ws["id"]
 
-# Create a new workspace
-workspace = create_workspace(token, "My New Workspace")
-workspace_id = workspace["id"]
-
-# List items in the workspace
-items = get_items(token, workspace_id)
-print(f"Found {len(items)} items")
-
-# Import a semantic model
-result = import_item(
-    token,
-    workspace_id,
-    r"C:\path\to\pbip\export",
-    item_properties={"displayName": "Published Model"},
-    retain_roles=True
+# --- 3. Update local parameters before publishing ---
+set_semantic_model_parameters(
+    path=r"C:\exports\MyModel.SemanticModel",
+    parameters={"Param_Environment": "prod"},
 )
-print(f"Imported: {result['displayName']} (ID: {result['id']})")
+
+# --- 4. Import the semantic model ---
+model = client.import_item(
+    workspace_id=ws_id,
+    path=r"C:\exports\MyModel.SemanticModel",
+    item_properties={"displayName": "My Model"},
+    retain_roles=True,
+)
+print(f"Model imported: {model['displayName']} ({model['id']})")
+
+# --- 5. Import a report connected to the model ---
+report = client.import_item(
+    workspace_id=ws_id,
+    path=r"C:\exports\MyReport.Report",
+    item_properties={
+        "displayName": "My Report",
+        "semanticModelId": model["id"],
+    },
+)
+print(f"Report imported: {report['displayName']} ({report['id']})")
+
+# --- 6. Clean up ---
+client.delete_workspace(ws_id)
+print("Workspace deleted")
 ```
+
+---
 
 ## License
 

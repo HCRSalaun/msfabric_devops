@@ -3,7 +3,36 @@ import json
 import re
 from . import config
 
-def set_semantic_model_parameters(path, parameters, fail_if_not_found=False):
+def set_semantic_model_parameters(
+    path: str,
+    parameters: dict[str, str],
+    fail_if_not_found: bool = False,
+) -> None:
+    """
+    Set Power Query parameter values in a local semantic model definition.
+
+    Supports both TMDL (``definition/expressions.tmdl``) and TMSL
+    (``model.bim``) formats, detected automatically from *path*.
+
+    Parameters
+    ----------
+    path : str
+        Root directory of the semantic model (parent of ``definition/`` or
+        the folder containing ``model.bim``).
+    parameters : dict[str, str]
+        Mapping of parameter name → new value.
+    fail_if_not_found : bool
+        When ``True``, raise ``ValueError`` if any parameter name is absent
+        from the model. When ``False`` (default), log a warning and continue.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the model definition cannot be located at *path*.
+    ValueError
+        If *fail_if_not_found* is ``True`` and one or more parameter names
+        are absent from the model.
+    """
     model_path = os.path.join(path, "definition")
 
     is_tmsl = False
@@ -109,3 +138,20 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+class SemanticModelsMixin:
+    """Mixin that exposes local semantic model operations as instance methods.
+
+    Unlike workspace and item mixins, these operations work on local files
+    and do not require a bearer token.
+    """
+
+    def set_semantic_model_parameters(
+        self,
+        path: str,
+        parameters: dict[str, str],
+        fail_if_not_found: bool = False,
+    ) -> None:
+        """Set Power Query parameter values in a local semantic model definition."""
+        set_semantic_model_parameters(path, parameters, fail_if_not_found)

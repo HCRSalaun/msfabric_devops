@@ -8,7 +8,7 @@ from . import config
 from . import authenticate
 
 
-def get_partitions(tmdl_content: str):
+def get_partitions(tmdl_content: str) -> list[str]:
     """
     Extract all partition blocks from a TMDL file.
     Returns a list of strings, each containing one partition block.
@@ -46,20 +46,20 @@ def set_partitions(tmdl_content: str, new_partitions: list[str], delimiter: str 
 
 def get_items(
     token: str,
-    workspace_id: str
-):
+    workspace_id: str,
+) -> list[dict]:
     result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items")
     return result
 
 def get_item_by_id(
     token: str,
     workspace_id: str,
-    item_id: str
-):
+    item_id: str,
+) -> dict:
     result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}")
     return result
 
-def get_items_by_name(token: str, workspace_id: str, item_name: str):
+def get_items_by_name(token: str, workspace_id: str, item_name: str) -> list[dict]:
     items = get_items(token, workspace_id)
     result = []
     for item in items:
@@ -67,7 +67,7 @@ def get_items_by_name(token: str, workspace_id: str, item_name: str):
             result.append(item)
     return result
 
-def get_item_definition_by_id(token: str, workspace_id: str, item_id: str, output_dir: str = None, format: str | None = None):
+def get_item_definition_by_id(token: str, workspace_id: str, item_id: str, output_dir: str | None = None, format: str | None = None) -> dict:
     """
     Exports a Fabric item from a Fabric workspace, optionnaly to a specified local path.
 
@@ -116,10 +116,10 @@ def import_item(
     path: str,
     item_properties: dict | None = None,
     skip_if_exists: bool = False,
-    retain_roles:bool = False,
-    retain_all_partitions:bool = False,
-    retain_partitions_tables: list[str] = []
-):
+    retain_roles: bool = False,
+    retain_all_partitions: bool = False,
+    retain_partitions_tables: list[str] = [],
+) -> dict:
     """
     Imports .pbir or .pbism items from PBIP folder into a Fabric workspace.
 
@@ -402,11 +402,10 @@ def import_item(
 def delete_item_by_id(
     token: str,
     workspace_id: str,
-    item_id: str
-):
-    result = api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}", method="DELETE")
+    item_id: str,
+) -> None:
+    api.invoke_fabric_api_request(token=token, uri=f"workspaces/{workspace_id}/items/{item_id}", method="DELETE")
     config.print_color(f"Deleted item: {item_id}", "green")
-    return result
 
 
 def main():
@@ -420,3 +419,59 @@ def main():
     #config.print_color(delete_item_by_id( token=token, workspace_id=config.WORKSPACE_ID, item_id = ""))
 if __name__ == "__main__":
     main()
+
+
+class ItemsMixin:
+    """Mixin that exposes item operations as instance methods.
+
+    Requires the host class to provide a ``token`` property that returns
+    a valid bearer access token.
+    """
+
+    def get_items(self, workspace_id: str) -> list[dict]:
+        """Return all items in a Fabric workspace."""
+        return get_items(self.token, workspace_id)
+
+    def get_item_by_id(self, workspace_id: str, item_id: str) -> dict:
+        """Return a single item by its ID."""
+        return get_item_by_id(self.token, workspace_id, item_id)
+
+    def get_items_by_name(self, workspace_id: str, item_name: str) -> list[dict]:
+        """Return all items whose ``displayName`` matches *item_name*."""
+        return get_items_by_name(self.token, workspace_id, item_name)
+
+    def get_item_definition_by_id(
+        self,
+        workspace_id: str,
+        item_id: str,
+        output_dir: str | None = None,
+        format: str | None = None,
+    ) -> dict:
+        """Export a Fabric item definition, optionally writing files to *output_dir*."""
+        return get_item_definition_by_id(self.token, workspace_id, item_id, output_dir, format)
+
+    def import_item(
+        self,
+        workspace_id: str,
+        path: str,
+        item_properties: dict | None = None,
+        skip_if_exists: bool = False,
+        retain_roles: bool = False,
+        retain_all_partitions: bool = False,
+        retain_partitions_tables: list[str] | None = None,
+    ) -> dict:
+        """Import a ``.pbir`` or ``.pbism`` item from a local PBIP folder."""
+        return import_item(
+            self.token,
+            workspace_id,
+            path,
+            item_properties=item_properties,
+            skip_if_exists=skip_if_exists,
+            retain_roles=retain_roles,
+            retain_all_partitions=retain_all_partitions,
+            retain_partitions_tables=retain_partitions_tables or [],
+        )
+
+    def delete_item_by_id(self, workspace_id: str, item_id: str) -> None:
+        """Delete a Fabric item by its ID."""
+        delete_item_by_id(self.token, workspace_id, item_id)
