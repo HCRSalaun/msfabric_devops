@@ -15,7 +15,7 @@ def get_partitions(tmdl_content: str) -> list[str]:
     """
     # Match 'partition <name> = <mode>' until the next unindented line or end of file
     pattern = re.compile(
-        r"^\tpartition[\s\S]*?=(?:[\s\S]*?)(?=\n\n)",
+        r"^\tpartition[\s\S]*?=(?:[\s\S]*?)(?=\r?\n\r?\n)",
         re.MULTILINE | re.DOTALL
     )
     partitions = pattern.findall(tmdl_content)
@@ -27,10 +27,9 @@ def set_partitions(tmdl_content: str, new_partitions: list[str], delimiter: str 
     at the location of the first partition block (or append at the end if none found).
     """
     # Regex to match all partition blocks
-    pattern = r"(\tpartition[\s\S]*?=\s*```[\s\S]*?```(?:\n\t.*)*)"
+    pattern = r"(\tpartition[\s\S]*?(?=\r?\n\r?\n))"
 
     matches = list(re.finditer(pattern, tmdl_content, flags=re.MULTILINE))
-
     if matches:
         # Use the start of the first match and the end of the last match
         start = matches[0].start()
@@ -287,7 +286,7 @@ def import_item(
                 for part in parts:
                     if part["Path"] == file["path"]:
                         original_content = base64.b64decode(part['Payload']).decode('utf-8')
-                        table_name = re.findall(r'table (.*)', original_content)[0]
+                        table_name = re.findall(r'table (.*)', original_content)[0].strip()
                         if retain_all_partitions or table_name in retain_partitions_tables:
                             modified_content = set_partitions(original_content, target_partitions)
                             part["Payload"] = base64.b64encode(modified_content.encode("utf-8")).decode("utf-8")

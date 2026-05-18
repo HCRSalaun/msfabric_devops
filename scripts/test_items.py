@@ -18,7 +18,8 @@ for item in items:
 result = client.import_item(
     workspace_id=ws_id,
     path="output",                              # relative to project root
-    item_properties={"displayName": "test2"},
+    item_properties={"displayName": "Customer Sales - BR"},
     retain_roles=False,
+    retain_partitions_tables=["Sales"]
 )
 print(f"\nImported: {result['displayName']}  ({result['id']})")
